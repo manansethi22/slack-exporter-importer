@@ -58,13 +58,17 @@ def get_data(url, params):
     while not success:
         r = _get_data(url, params)
         attempt += 1
+        
+        # Debug: print what we're requesting
+        print(f"API Request to: {url}")
+        print(f"Status: {r.status_code}")
 
         if r.status_code != 429:
             success = True
         else:
             retry_after = int(r.headers["Retry-After"])  # seconds to wait
             sleep_time = retry_after + ADDITIONAL_SLEEP_TIME
-            print(f"Rate-limited. Retrying after {sleep_time} seconds ({attempt}x).")
+            print(f"Rate-limited on {url}. Retrying after {sleep_time} seconds ({attempt}x).")
             sleep(sleep_time)
     return r
 
@@ -131,7 +135,7 @@ def channel_list(team_id=None, response_url=None):
     params = {
         # "token": os.environ["SLACK_USER_TOKEN"],
         "team_id": team_id,
-        "types": "public_channel,private_channel,mpim,im",
+        "types": "public_channel,private_channel",  # Removed mpim and im to reduce scope requirements
         "limit": 200,
     }
 
@@ -222,18 +226,11 @@ def parse_channel_list(channels, users):
         ch_private = (
             "private " if "is_private" in channel and channel["is_private"] else ""
         )
-        if "is_im" in channel and channel["is_im"]:
-            ch_type = "direct_message"
-        elif "is_mpim" in channel and channel["is_mpim"]:
-            ch_type = "multiparty-direct_message"
-        elif "group" in channel and channel["is_group"]:
-            ch_type = "group"
-        else:
-            ch_type = "channel"
+        # Simplified channel type detection - only channels now
+        ch_type = "channel"
+        
         if "creator" in channel:
             ch_ownership = "created by %s" % name_from_uid(channel["creator"], users)
-        elif "user" in channel:
-            ch_ownership = "with %s" % name_from_uid(channel["user"], users)
         else:
             ch_ownership = ""
         ch_name = " %s:" % ch_name if ch_name.strip() != "" else ch_name
@@ -270,11 +267,8 @@ def name_from_uid(user_id, users, real=False):
 def name_from_ch_id(channel_id, channels):
     for channel in channels:
         if channel["id"] == channel_id:
-            return (
-                (channel["user"], "Direct Message")
-                if "user" in channel
-                else (channel["name"], "Channel")
-            )
+            # Simplified since we only handle channels now
+            return (channel["name"], "Channel")
     return "[null channel]"
 
 
