@@ -325,10 +325,29 @@ def parse_channel_history(msgs, users, check_thread=False):
     messages = [x for x in msgs if x["type"] == "message"]  # files are also messages
     body = ""
     for msg in messages:
+        # Determine if this is a bot message and extract appropriate user info
+        is_bot = False
         if "user" in msg:
+            # Regular user message
             usr = {
                 "name": name_from_uid(msg["user"], users),
                 "real_name": name_from_uid(msg["user"], users, real=True),
+            }
+        elif "bot_id" in msg or "username" in msg or msg.get("subtype") == "bot_message":
+            # Bot message - extract bot name from available fields
+            is_bot = True
+            bot_name = ""
+            
+            if "username" in msg:
+                bot_name = msg["username"]
+            elif "bot_id" in msg:
+                bot_name = f"Bot {msg['bot_id']}"
+            else:
+                bot_name = "Bot"
+                
+            usr = {
+                "name": bot_name,
+                "real_name": "bot",
             }
         else:
             usr = {"name": "", "real_name": "none"}
@@ -336,18 +355,48 @@ def parse_channel_history(msgs, users, check_thread=False):
         timestamp = datetime.fromtimestamp(round(float(msg["ts"]))).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
-        text = msg["text"] if msg["text"].strip() != "" else "[no message content]"
+        
+        # Extract text content - check attachments if text is empty
+        text = msg.get("text", "").strip()
+        if not text and "attachments" in msg:
+            # Extract content from attachments
+            attachment_texts = []
+            for attachment in msg["attachments"]:
+                if "title" in attachment:
+                    attachment_texts.append(f"[{attachment['title']}]")
+                if "text" in attachment:
+                    attachment_texts.append(attachment["text"])
+                if "fields" in attachment:
+                    for field in attachment["fields"]:
+                        field_text = f"{field.get('title', '')}: {field.get('value', '')}"
+                        attachment_texts.append(field_text)
+            
+            if attachment_texts:
+                text = " | ".join(attachment_texts)
+        
+        if not text:
+            text = "[no message content]"
+            
+        # Replace user mentions with names
         for u in [x["id"] for x in users]:
             text = str(text).replace(
                 "<@%s>" % u, "<@%s> (%s)" % (u, name_from_uid(u, users))
             )
 
-        entry = "Message at %s\nUser: %s (%s)\n%s" % (
-            timestamp,
-            usr["name"],
-            usr["real_name"],
-            text,
-        )
+        # Format entry differently for bots vs users
+        if is_bot:
+            entry = "Message at %s\nBot: %s\n%s" % (
+                timestamp,
+                usr["name"],
+                text,
+            )
+        else:
+            entry = "Message at %s\nUser: %s (%s)\n%s" % (
+                timestamp,
+                usr["name"],
+                usr["real_name"],
+                text,
+            )
         if "reactions" in msg:
             rxns = msg["reactions"]
             entry += "\nReactions: " + ", ".join(
