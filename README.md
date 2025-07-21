@@ -1,173 +1,167 @@
 # Slack Exporter & Importer
 
-Easily export messages (including bot messages, attachments, and files) from a Slack workspace and import them into another workspace.
+This project provides scripts to **export messages (and optionally files) from a Slack channel**, and to **import them into another Slack workspace**.
 
 ---
 
-## Installation
+## Table of Contents
 
-1. **Clone this repository:**
-
-   ```bash
-   git clone https://github.com/yourusername/slack-exporter.git
-   cd slack-exporter
-   ```
-
-2. **Create and activate a Python virtual environment:**
-
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. **Install dependencies:**
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-   _(If you don't have `requirements.txt`, see the list at the end of this README.)_
-
-4. **Create and configure your `.env` file:**
-   - Copy the example or create a new `.env` file at the project root.
-   - Set your Slack tokens:
-     ```
-     SLACK_USER_TOKEN=xoxp-...   # For exporting (see below)
-     SLACK_BOT_TOKEN=xoxb-...    # For importing (see below)
-     ```
+- [Features](#features)
+- [Requirements](#requirements)
+- [Setup](#setup)
+- [Slack Exporter Usage](#slack-exporter-usage)
+  - [Basic Export](#basic-export)
+  - [Export With Files](#export-with-files)
+  - [Export With Date Range](#export-with-date-range)
+  - [Where Are Exported Files Saved?](#where-are-exported-files-saved)
+- [Slack Importer Usage](#slack-importer-usage)
+  - [Basic Import](#basic-import)
+  - [Import Only File Links](#import-only-file-links)
+  - [How to Specify File Paths](#how-to-specify-file-paths)
+- [Environment Variables](#environment-variables)
+- [Tips & Troubleshooting](#tips--troubleshooting)
+- [Credits](#credits)
 
 ---
 
-## Exporting Messages & Files
+## Features
 
-### 1. List Channels and Users
-
-To get a list of channels:
-
-```bash
-python exporter.py --lc
-```
-
-To get a list of users:
-
-```bash
-python exporter.py --lu
-```
-
-### 2. Export all messages from a channel
-
-```bash
-python exporter.py -c --ch <CHANNEL_ID> -o ./exports
-```
-
-Example:
-
-```bash
-python exporter.py -c --ch C03UD84TRKP -o ./exports
-```
-
-### 3. Export messages from the last N days
-
-**For the last 1 day:**
-
-```bash
-python exporter.py -c --ch <CHANNEL_ID> -o ./exports --fr $(python -c "from datetime import datetime, timedelta; import time; print(int(time.mktime((datetime.now() - timedelta(days=1)).timetuple())))")
-```
-
-**For the last 7 days:**
-
-```bash
-python exporter.py -c --ch <CHANNEL_ID> -o ./exports --fr $(python -c "from datetime import datetime, timedelta; import time; print(int(time.mktime((datetime.now() - timedelta(days=7)).timetuple())))")
-```
-
-### 4. Export files from Slack
-
-To download all files and attachments:
-
-```bash
-python exporter.py --files -o ./exports
-```
-
-### 5. Export raw JSON (Recommended for import)
-
-```bash
-python exporter.py -c --ch <CHANNEL_ID> -o ./exports --json
-```
-
----
-
-## Importing Messages
-
-### 1. Prepare your Slack App for Import
-
-- **Create a Slack App** in your _destination_ workspace with at least these scopes:
-  - `chat:write`
-  - `channels:read`
-  - `groups:read`
-- **Install the app** to your destination workspace.
-- **Add your bot to the target channel** (in Slack: `/invite @YourBotName`).
-
-### 2. Set up `.env` for Import:
-
-Your `.env` must include:
-
-```
-SLACK_BOT_TOKEN=xoxb-...   # From your Slack App (destination workspace)
-```
-
-### 3. List channels in your destination workspace
-
-```bash
-python slack_importer.py list-channels
-```
-
-_Copy the channel ID for your import._
-
-### 4. Import messages
-
-```bash
-python slack_importer.py import ./exports/slack_export_*/channel_<CHANNEL_ID>.json <DEST_CHANNEL_ID>
-```
-
-Example:
-
-```bash
-python slack_importer.py import ./exports/slack_export_2025-07-21_154237/channel_C03UD84TRKP.json C097D4GP0KA
-```
-
----
-
-## Tips & Notes
-
-- **Bot Messages and Attachments:** This tool preserves bot message content, including structured attachments (fields, titles, etc.).
-- **Files:** Exporter will download files if you use the `--files` option, but importer does not automatically upload files.
-- **Rate Limits:** Both export and import scripts handle Slack API rate limits, but for large imports, consider waiting between runs.
-- **Headers:** By default, the importer only posts the original message content (no extra import header).
-- **Customization:** Edit the scripts as needed for more advanced formatting.
+- Export all messages from a Slack channel.
+- **Optionally download attached files** (if enabled in the exporter).
+- Import messages into another Slack workspace/channel.
+- **Import can post links to files** from the export (instead of uploading the files themselves).
 
 ---
 
 ## Requirements
 
-If you need to create a `requirements.txt`:
+- Python 3.7+
+- `slack_sdk`
+- `python-dotenv`
+- `requests` (if downloading files)
 
-```
-slack-sdk
-requests
-python-dotenv
-pathvalidate
-```
+Install dependencies with:
 
-_(Optional: If you use slack_bolt for other scripts, add `slack-bolt`)_
+```bash
+pip install slack_sdk python-dotenv requests
+```
 
 ---
 
-## License
+## Setup
 
-MIT
+1. **Clone this repository** and `cd` into it.
+2. **Create a `.env` file** with the following variables:
+
+   ```
+   # For exporter (user token needed for file downloads)
+   SLACK_USER_TOKEN=xoxp-your-slack-user-token-here
+
+   # For importer (bot token for your destination workspace)
+   SLACK_BOT_TOKEN=xoxb-your-bot-token-here
+   ```
+
+3. (Optional) Ensure your user/bot token has the required permissions for reading/writing messages and files on Slack.
 
 ---
 
-## Contact
+## Slack Exporter Usage
 
-For questions or improvements, open an issue or pull request!
+### Basic Export
+
+Export all messages from a channel:
+
+```bash
+python exporter.py -c --ch <CHANNEL_ID> -o ./exports --json
+```
+
+- `<CHANNEL_ID>`: Slack channel ID you want to export.
+
+### Export With Files
+
+To also export (download) files attached to messages:
+
+```bash
+python exporter.py -c --ch <CHANNEL_ID> --files -o ./exports --json
+```
+
+This will download attached files (if implemented in the exporter) to a `files/` directory within the export folder.
+
+### Export With Date Range
+
+Export messages **from a specific date** (e.g., last 1 day):
+
+```bash
+python exporter.py -c --ch <CHANNEL_ID> --files -o ./exports --json --fr $(date -v-1d +%s)
+```
+
+- `--fr <timestamp>`: Start date as Unix timestamp (seconds since epoch).
+
+Export messages **between two dates**:
+
+```bash
+python exporter.py -c --ch <CHANNEL_ID> --files -o ./exports --json --fr <start_timestamp> --to <end_timestamp>
+```
+
+### Where Are Exported Files Saved?
+
+- The **JSON export** will be saved in a subfolder like:
+  ```
+  ./exports/slack_export_<date_time_stamp>/channel_<CHANNEL_ID>.json
+  ```
+- **If you export files**, they will be saved in:
+  ```
+  ./exports/slack_export_<date_time_stamp>/files/
+  ```
+
+---
+
+## Slack Importer Usage
+
+### Basic Import
+
+Import messages into a destination channel:
+
+```bash
+python slack_importer.py import /full/path/to/channel_<CHANNEL_ID>.json <DEST_CHANNEL_ID>
+```
+
+- First argument: Full path to your exported JSON file.
+- Second argument: Destination channel ID in your new Slack workspace.
+
+### Import Only File Links
+
+If you exported **without files** (or don't want to upload files), the importer will **post file links** in the message using the `permalink` or `url_private` field.
+
+### How to Specify File Paths
+
+- Always give the **full path** to your exported JSON file, e.g.:
+  ```
+  /Users/youruser/Desktop/SlackExporter/slack-exporter/exports/slack_export_2025-07-21_192459/channel_C08MLV9BXNU.json
+  ```
+- Destination channel ID (e.g., `C097D4GP0KA`) is required.
+
+---
+
+## Environment Variables
+
+- `SLACK_USER_TOKEN`: Required for exporting messages and downloading files (should have necessary scopes).
+- `SLACK_BOT_TOKEN`: Required for importing messages into your destination workspace.
+
+Set these in your `.env` file in the root directory.
+
+---
+
+## Tips & Troubleshooting
+
+- Always check you have the correct permissions and tokens for each workspace.
+- If you want to **import files as file links** (not uploading), use the provided `slack_importer.py`. If you want to actually upload files, you must first export them with the exporter and then use a different importer.
+- For large exports/imports, Slack API rate limits may slow down the process. The importer waits 1 second between messages by default.
+- To get your channel ID, you can use the exporter’s `list-channels` command or look at the URL in Slack.
+
+---
+
+## Credits
+
+- [slack_sdk](https://github.com/slackapi/python-slack-sdk)
+- [python-dotenv](https://github.com/theskumar/python-dotenv)
