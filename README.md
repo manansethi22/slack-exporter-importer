@@ -1,69 +1,173 @@
-# slack-exporter
+# Slack Exporter & Importer
 
-A Slack bot and standalone script for exporting messages and file attachments from public and private channels, using Slack's new Conversations API.
+Easily export messages (including bot messages, attachments, and files) from a Slack workspace and import them into another workspace.
 
-A similar service is provided by Slack for workspace admins at [https://my.slack.com/services/export](https://my.slack.com/services/export) (where `my` can be replaced with your full workspace name to refer to a workspace different than your default). However, it can only access public channels, while `slack-exporter` can retrieve data from any channel accessible to your user account.
+---
 
-## Authentication with Slack
+## Installation
 
-There are two ways to use `slack-exporter` (detailed below). Both require a Slack API token to be able to communicate with your workspace.
+1. **Clone this repository:**
 
-1. Visit [https://api.slack.com/apps/](https://api.slack.com/apps/) and sign in to your workspace.
-2. Click `Create New App`. If prompted to select "how you'd like to configure your app's scopes", choose the `App Manifest` option. You can configure the app manually instead, but you will be prompted to enter an app name and additional steps to set up permissions instead of the single step below. Once creates, select your workspace.
-3. You should then be prompted for an app manifest. Paste the contents of the `slack.yaml` file (in the root of this repo) into the YAML box.
-4. Select `Install to Workspace` at the top of that page (or `Reinstall to Workspace` if you have done this previously) and accept at the prompt.
-5. Copy the `OAuth Access Token` (which will generally start with `xoxp` for user-level permissions and may be located in a section like "OAuth & Permissions" in the sidebar).
+   ```bash
+   git clone https://github.com/yourusername/slack-exporter.git
+   cd slack-exporter
+   ```
 
-## Usage
+2. **Create and activate a Python virtual environment:**
 
-### As a standalone script
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
 
-`exporter.py` can create an archive of all conversation history in your workspace which is accessible to your user account.
+3. **Install dependencies:**
 
-1. Either add 
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-    ```text
-    SLACK_USER_TOKEN = xoxp-xxxxxxxxxxxxx...
-    ```
-    
-    to a file named `.env` in the same directory as `exporter.py`, or run the following in your shell (replacing the value with the user token you obtained in the [Authentication with Slack](#authentication-with-slack) section above).
+   _(If you don't have `requirements.txt`, see the list at the end of this README.)_
 
-    ```shell script
-    export SLACK_USER_TOKEN=xoxp-xxxxxxxxxxxxx...
-    ```
+4. **Create and configure your `.env` file:**
+   - Copy the example or create a new `.env` file at the project root.
+   - Set your Slack tokens:
+     ```
+     SLACK_USER_TOKEN=xoxp-...   # For exporting (see below)
+     SLACK_BOT_TOKEN=xoxb-...    # For importing (see below)
+     ```
 
-2. If you cloned this repo, make sure that dependencies are installed by running `pip install -r requirements.txt` in the repo root directory.
-3. Run `python exporter.py --help` to view the available export options. You can test that access to Slack is working by listing available conversations: `python exporter.py --lc`.
+---
 
-### As a Slack bot
+## Exporting Messages & Files
 
-`bot.py` is a Slack bot that responds to "slash commands" in Slack channels (e.g., `/export-channel`). To connect the bot to the Slack app generated in [Authentication with Slack](#authentication-with-slack), create a file named `.env` in the root directory of this repo, and add the following line:
+### 1. List Channels and Users
 
-```text
-SLACK_USER_TOKEN = xoxp-xxxxxxxxxxxxx...
-``` 
+To get a list of channels:
 
-Save this file and run the Flask application in `bot.py` such that the application is exposed to the Internet. This can be done via a web server (e.g., Heroku), as well as via the ngrok service, which assigns your `localhost` server a public URL.
+```bash
+python exporter.py --lc
+```
 
-To use the ngrok method:
+To get a list of users:
 
-1. [Download](https://ngrok.com/download) the appropriate binary.
-2. Run `python bot.py`
-3. Run the ngrok binary with `path/to/ngrok http 5000`, where `5000` is the port on which the Flask application (step 2) is running. Copy the forwarding HTTPS address provided.
+```bash
+python exporter.py --lu
+```
 
-4. Create the following slash commands will be created (one for each applicable Flask route in `bot.py`):
+### 2. Export all messages from a channel
 
-    | Command         | Request URL                               | Arguments    | Example Usage        |
-    |-----------------|-------------------------------------------|--------------|----------------------|
-    | /export-channel | https://`[host_url]`/slack/export-channel | json \| text | /export-channel text |
-    | /export-replies | https://`[host_url]`/slack/export-replies | json \| text | /export-replies json |
+```bash
+python exporter.py -c --ch <CHANNEL_ID> -o ./exports
+```
 
-    To do this, uncomment the `slash-commands` section in `slack.yaml` and replace `YOUR_HOST_URL_HERE` with something like `https://xxxxxxxxxxxx.ngrok.io` (if using ngrok). Then navigate back to `OAuth & Permissions` and click `(Re)install to Workspace` to add these slash commands to the workspace (ensure the OAuth token in your `.env` file is still correct).
+Example:
 
-## Author
+```bash
+python exporter.py -c --ch C03UD84TRKP -o ./exports
+```
 
-[Seb Seager](https://github.com/sebseager)
+### 3. Export messages from the last N days
+
+**For the last 1 day:**
+
+```bash
+python exporter.py -c --ch <CHANNEL_ID> -o ./exports --fr $(python -c "from datetime import datetime, timedelta; import time; print(int(time.mktime((datetime.now() - timedelta(days=1)).timetuple())))")
+```
+
+**For the last 7 days:**
+
+```bash
+python exporter.py -c --ch <CHANNEL_ID> -o ./exports --fr $(python -c "from datetime import datetime, timedelta; import time; print(int(time.mktime((datetime.now() - timedelta(days=7)).timetuple())))")
+```
+
+### 4. Export files from Slack
+
+To download all files and attachments:
+
+```bash
+python exporter.py --files -o ./exports
+```
+
+### 5. Export raw JSON (Recommended for import)
+
+```bash
+python exporter.py -c --ch <CHANNEL_ID> -o ./exports --json
+```
+
+---
+
+## Importing Messages
+
+### 1. Prepare your Slack App for Import
+
+- **Create a Slack App** in your _destination_ workspace with at least these scopes:
+  - `chat:write`
+  - `channels:read`
+  - `groups:read`
+- **Install the app** to your destination workspace.
+- **Add your bot to the target channel** (in Slack: `/invite @YourBotName`).
+
+### 2. Set up `.env` for Import:
+
+Your `.env` must include:
+
+```
+SLACK_BOT_TOKEN=xoxb-...   # From your Slack App (destination workspace)
+```
+
+### 3. List channels in your destination workspace
+
+```bash
+python slack_importer.py list-channels
+```
+
+_Copy the channel ID for your import._
+
+### 4. Import messages
+
+```bash
+python slack_importer.py import ./exports/slack_export_*/channel_<CHANNEL_ID>.json <DEST_CHANNEL_ID>
+```
+
+Example:
+
+```bash
+python slack_importer.py import ./exports/slack_export_2025-07-21_154237/channel_C03UD84TRKP.json C097D4GP0KA
+```
+
+---
+
+## Tips & Notes
+
+- **Bot Messages and Attachments:** This tool preserves bot message content, including structured attachments (fields, titles, etc.).
+- **Files:** Exporter will download files if you use the `--files` option, but importer does not automatically upload files.
+- **Rate Limits:** Both export and import scripts handle Slack API rate limits, but for large imports, consider waiting between runs.
+- **Headers:** By default, the importer only posts the original message content (no extra import header).
+- **Customization:** Edit the scripts as needed for more advanced formatting.
+
+---
+
+## Requirements
+
+If you need to create a `requirements.txt`:
+
+```
+slack-sdk
+requests
+python-dotenv
+pathvalidate
+```
+
+_(Optional: If you use slack_bolt for other scripts, add `slack-bolt`)_
+
+---
 
 ## License
 
-This software is available under the [GPL](LICENSE).
+MIT
+
+---
+
+## Contact
+
+For questions or improvements, open an issue or pull request!
